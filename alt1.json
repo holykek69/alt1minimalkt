@@ -1,0 +1,12 @@
+{
+  "name": "Killcount Tracker",
+  "description": "Tracks RuneScape killcount via XP detection (±2 tolerance)",
+  "version": "0.4",
+  "url": "killcount_tracker.html",
+  "icon": "",
+  "permissions": [
+    "gamestate",
+    "overlay",
+    "screen"
+  ]
+}

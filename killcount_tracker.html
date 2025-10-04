@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Killcount Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: rgba(0,0,0,0.5);
+      color: white;
+    }
+    #container { padding: 8px; width: 240px; }
+    #header { font-weight: bold; margin-bottom: 6px; }
+    #fields input { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
+    #counter { font-size: 24px; text-align: center; margin: 8px 0; }
+    #buttons button { width: 48%; margin-right: 2%; }
+    #buttons button:last-child { margin-right: 0; }
+    #debug { font-size: 11px; margin-top: 6px; white-space: pre-line; max-height: 120px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="header">Killcount Tracker</div>
+    <div id="fields">
+      <input type="text" id="taskName" placeholder="Name (e.g. boss)">
+      <input type="number" id="xpPerKill" placeholder="XP per kill">
+      <label><input type="checkbox" id="debugToggle"> Debug mode</label>
+    </div>
+    <div id="counter">0</div>
+    <div id="buttons">
+      <button id="startBtn">Start</button>
+      <button id="resetBtn">Reset</button>
+      <button id="regionBtn">Set Region</button>
+    </div>
+    <div id="debug"></div>
+  </div>
+
+  <script src="https://runeapps.org/alt1lib.js"></script>
+  <script>
+    let killCount = 0;
+    let xpTarget = null;
+    let taskName = "";
+    let listening = false;
+    let debugMode = false;
+    let region = null;
+    const tolerance = 2; // ±2 XP allowed
+
+    // ------------------------------
+    // Persistence
+    // ------------------------------
+    function saveState() {
+      localStorage.setItem("kcState", JSON.stringify({ killCount, xpTarget, taskName, region }));
+    }
+    function loadState() {
+      let s = localStorage.getItem("kcState");
+      if (!s) return;
+      try {
+        let obj = JSON.parse(s);
+        killCount = obj.killCount || 0;
+        xpTarget = obj.xpTarget || null;
+        taskName = obj.taskName || "";
+        region = obj.region || null;
+        document.getElementById("taskName").value = taskName;
+        if (xpTarget) document.getElementById("xpPerKill").value = xpTarget;
+        updateDisplay();
+      } catch(e) { console.warn("Failed to load state", e); }
+    }
+
+    // ------------------------------
+    // UI & Debug
+    // ------------------------------
+    function updateDisplay() {
+      document.getElementById("counter").textContent = killCount;
+    }
+    function logDebug(msg) {
+      if (!debugMode) return;
+      console.log(msg);
+      const dbg = document.getElementById("debug");
+      dbg.textContent = msg + "\n" + dbg.textContent;
+    }
+
+    // ------------------------------
+    // Core Logic
+    // ------------------------------
+    function onXPRise(xpString) {
+      const num = parseInt(xpString.replace(/\D/g, ""), 10);
+      logDebug("XP detected: " + xpString + " → " + num);
+      if (!isNaN(num) && xpTarget !== null) {
+        if (Math.abs(num - xpTarget) <= tolerance) {
+          killCount++;
+          updateDisplay();
+          saveState();
+          logDebug(`Counted as kill (within ±${tolerance})`);
+        }
+      }
+    }
+
+    function startListening() {
+      if (listening) return;
+      if (typeof alt1 !== "undefined" && alt1.xpRiseListener) {
+        alt1.xpRiseListener("onXPRise");
+        listening = true;
+        logDebug("Using gamestate xpRiseListener");
+      } else if (region) {
+        logDebug("Using OCR fallback in region: " + JSON.stringify(region));
+        setInterval(scanRegion, 1000);
+        listening = true;
+      } else {
+        logDebug("No XP detection method available");
+      }
+    }
+
+    // ------------------------------
+    // OCR fallback with RuneScape font
+    // ------------------------------
+    function scanRegion() {
+      if (!region) return;
+      try {
+        const img = a1lib.capture(region.x, region.y, region.w, region.h);
+        const font = a1lib.bindFont("xpdrops", a1lib.mixColor(255, 255, 255));
+        const res = img.readAllStrings(font);
+        if (res.length > 0) {
+          res.forEach(r => {
+            logDebug("OCR: " + r.text);
+            onXPRise(r.text);
+          });
+        }
+      } catch(e) {
+        logDebug("OCR error: " + e.message);
+      }
+    }
+
+    // ------------------------------
+    // Region selection (bindRect)
+    // ------------------------------
+    function setRegion() {
+      if (typeof a1lib === "undefined") {
+        alert("a1lib not available. Use inside Alt1 client.");
+        return;
+      }
+      a1lib.bindRect("Select XP Drop Area", function(bounds) {
+        region = bounds;
+        logDebug("Region set: " + JSON.stringify(bounds));
+        saveState();
+      });
+    }
+
+    // ------------------------------
+    // Reset
+    // ------------------------------
+    function resetCounter() {
+      killCount = 0;
+      updateDisplay();
+      saveState();
+    }
+
+    // ------------------------------
+    // Initialization
+    // ------------------------------
+    window.onload = function() {
+      loadState();
+
+      document.getElementById("startBtn").onclick = () => {
+        taskName = document.getElementById("taskName").value;
+        xpTarget = parseInt(document.getElementById("xpPerKill").value, 10);
+        debugMode = document.getElementById("debugToggle").checked;
+        if (isNaN(xpTarget)) {
+          alert("Enter a valid XP per kill");
+          return;
+        }
+        startListening();
+        saveState();
+      };
+
+      document.getElementById("resetBtn").onclick = resetCounter;
+      document.getElementById("regionBtn").onclick = setRegion;
+
+      if (typeof alt1 !== "undefined" && alt1.identifyApp) {
+        alt1.identifyApp(JSON.stringify({
+          name: "Killcount Tracker",
+          description: "Tracks killcount by detecting XP drops (±2 tolerance)",
+          version: "0.5"
+        }));
+      }
+    };
+  </script>
+</body>
+</html>

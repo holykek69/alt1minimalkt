@@ -1,0 +1,8 @@
+{
+  "name": "Killcount Tracker",
+  "description": "Tracks killcount via XP detection",
+  "version": "0.5",
+  "url": "https://yourhost.com/killcount_tracker.html",
+  "permissions": ["gamestate","overlay","screen"],
+  "icon": "https://yourhost.com/icon.png"
+}
